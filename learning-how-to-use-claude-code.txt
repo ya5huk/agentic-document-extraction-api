@@ -17,3 +17,8 @@ and check whats have been done, ...
 /clear - clear context window
 
 claude --continue if u exited the session
+
+My workflow with this project
+
+1. Understand the task & whats setup required
+2. Download whats needed and start building using phases
