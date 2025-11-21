@@ -1,0 +1,19 @@
+Create a plan first before big work
+
+/memory
+You can edit 
+1. user memory in CLAUDE.md in .claude folder in ...
+2. project memory in CLAUDE.md in project
+
+For big plans:
+"Make the plan multi-phase"
+
+/context
+See how much context is left for you
+
+If context is ending -> You can ask claude code to create a github issue 
+and check whats have been done, ...
+
+/clear - clear context window
+
+claude --continue if u exited the session
