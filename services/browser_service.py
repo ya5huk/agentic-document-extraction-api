@@ -11,8 +11,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-from browser_use import Agent
-from langchain_google_genai import ChatGoogleGenerativeAI
+from browser_use import Agent, ChatGoogle
 
 logger = logging.getLogger(__name__)
 
@@ -64,32 +63,56 @@ class BrowserService:
         self.llm = None
         self.agent = None
 
-        logger.info(f"Browser service initialized (headless={headless}, download_dir={download_dir})")
+        logger.info(
+            f"Browser service initialized (headless={headless}, download_dir={download_dir})")
 
-    def _initialize_agent(self):
+    def _initialize_llm(self):
         """
-        Initialize the Browser Use agent with Gemini LLM.
+        Initialize the Gemini LLM.
 
         This is done lazily to avoid unnecessary initialization.
         """
-        if self.agent is None:
-            logger.info("Initializing Browser Use agent with Gemini...")
+        if self.llm is None:
+            logger.info("Initializing Gemini LLM...")
 
-            # Initialize Gemini LLM
-            self.llm = ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash-exp",
-                google_api_key=self.gemini_api_key,
-                temperature=0.1,
+            # Set environment variable for Gemini API key (browser-use uses this)
+            os.environ["GOOGLE_API_KEY"] = self.gemini_api_key
+
+            # Initialize Gemini LLM with proper configuration for browser-use
+            self.llm = ChatGoogle(
+                model="gemini-flash-latest",
             )
 
-            # Initialize Browser Use agent
-            self.agent = Agent(
-                task="",  # Will be set per operation
-                llm=self.llm,
-                use_vision=True,
-            )
+            logger.info("Gemini LLM initialized successfully")
 
-            logger.info("Browser Use agent initialized successfully")
+    def _get_browser_config(self):
+        """
+        Get browser configuration with download settings that force PDF downloads.
+
+        Returns:
+            dict: Browser configuration including download preferences
+        """
+        download_path = str(self.download_dir.absolute())
+
+        # Chrome preferences to force PDF downloads instead of viewing
+        chrome_prefs = {
+            "download.default_directory": download_path,
+            "download.prompt_for_download": False,
+            "download.directory_upgrade": True,
+            "plugins.always_open_pdf_externally": True,  # Key setting: always download PDFs
+            "safebrowsing.enabled": True,
+        }
+
+        return {
+            "headless": self.headless,
+            "downloads_path": download_path,
+            "chrome_prefs": chrome_prefs,
+            "args": [
+                "--disable-blink-features=AutomationControlled",
+                f"--download-dir={download_path}",
+            ],
+            "ignore_https_errors": True,
+        }
 
     async def find_and_download_pdfs(self, url: str) -> List[str]:
         """
@@ -116,50 +139,89 @@ class BrowserService:
             # Clear download directory before starting
             self._clear_download_directory()
 
-            # Initialize agent if not already done
-            self._initialize_agent()
+            # Initialize LLM if not already done
+            self._initialize_llm()
 
             # Create task for the AI agent
             task = f"""
 Navigate to this procurement/solicitation page: {url}
 
-Your task is to download ALL PDF documents available on this page. Please:
+Your task is to DOWNLOAD (not just view) ALL PDF documents available on this page to the directory specified in config.
 
-1. Wait for the page to fully load
-2. Look for PDF files in these common locations:
+IMPORTANT INSTRUCTIONS:
+1. Wait for the page to fully load (wait 3-5 seconds)
+
+2. Look for PDF files and download buttons/links:
+   - "Download" buttons or links (PREFERRED - click these first!)
    - Direct PDF links (ending in .pdf)
-   - "Download" buttons or links
    - "View Document" or "View Event Package" buttons
-   - Document tabs or sections
+   - Document tabs or sections with download options
    - Attachment lists
    - "Event Package" or "Solicitation Package" sections
 
-3. Click on each PDF link/button to download the files
-4. Make sure all PDFs are downloaded to the downloads folder
+3. For EACH PDF you find:
+   Step A: Click on the PDF link/button to open it
 
-Common button text to look for:
-- "View Event Package"
-- "Download"
-- "View Document"
+   Step B: If the PDF opens in a NEW BROWSER TAB/WINDOW:
+      - Switch to that new tab/window
+      - Use keyboard shortcut Ctrl+S (or right-click and select "Save as")
+      - This will trigger the Save dialog
+      - The file should download automatically to the configured downloads folder
+      - Wait 3-5 seconds for the download to complete
+      - Close the PDF tab/window
+      - Return to the main page to find more PDFs
+
+   Step C: If a direct "Download" button exists:
+      - Click it to download the file directly
+      - Wait 3-5 seconds for download to complete
+
+4. Repeat for ALL PDFs on the page
+
+5. Download directory: {str(self.download_dir.absolute())}
+
+Common button/link text to look for:
+- "Download" or "Download PDF"
+- "View Event Package" (this will open PDF in new tab - then use Ctrl+S)
+- "View Document" (this will open PDF in new tab - then use Ctrl+S)
+- "Save" or "Save As"
 - "Attachments"
 - "Documents"
-- "Event Package"
-- Any link with .pdf extension
+- Direct .pdf links (these open in new tab - then use Ctrl+S)
 
-IMPORTANT: Download ALL PDF files you find. Do not skip any documents.
+CRITICAL WORKFLOW:
+1. Click PDF link → New tab opens with PDF
+2. Use Ctrl+S to save the PDF
+3. Wait for download to complete
+4. Close the PDF tab
+5. Return to main page
+6. Find next PDF and repeat
 
-Once all PDFs are downloaded, confirm completion.
+Your goal is to DOWNLOAD all PDF files to the folder, not just view them.
+
+Once ALL PDFs are downloaded, confirm completion.
 """
 
-            # Update agent task
-            self.agent.task = task
+            # Get browser configuration
+            browser_config = self._get_browser_config()
+
+            # Create a new agent with the specific task and browser config
+            logger.info("Creating Browser Use agent with task...")
+            logger.info(
+                f"Download directory: {browser_config['downloads_path']}")
+
+            agent = Agent(
+                task=task,
+                llm=self.llm,
+                use_vision=True,
+                browser_config=browser_config,
+            )
 
             # Run the agent
             logger.info("Running Browser Use agent...")
             start_time = time.time()
 
             # Execute the task
-            result = await self.agent.run()
+            result = await agent.run()
 
             elapsed_time = time.time() - start_time
             logger.info(f"Agent completed in {elapsed_time:.2f} seconds")
@@ -173,10 +235,12 @@ Once all PDFs are downloaded, confirm completion.
                 logger.warning(f"Agent result was: {result}")
                 return []
 
-            logger.info(f"Successfully downloaded {len(downloaded_files)} PDF(s):")
+            logger.info(
+                f"Successfully downloaded {len(downloaded_files)} PDF(s):")
             for file_path in downloaded_files:
                 file_size = Path(file_path).stat().st_size
-                logger.info(f"  - {Path(file_path).name} ({file_size:,} bytes)")
+                logger.info(
+                    f"  - {Path(file_path).name} ({file_size:,} bytes)")
 
             return downloaded_files
 
@@ -222,12 +286,8 @@ Once all PDFs are downloaded, confirm completion.
 
         Call this when done with the browser service.
         """
-        if self.agent is not None:
-            try:
-                # Browser Use handles cleanup internally
-                logger.info("Browser service closed")
-            except Exception as e:
-                logger.warning(f"Error closing browser: {e}")
+        # Browser Use handles cleanup internally
+        logger.info("Browser service closed")
 
     def get_download_directory(self) -> str:
         """
