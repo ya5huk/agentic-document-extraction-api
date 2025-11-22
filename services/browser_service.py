@@ -340,30 +340,33 @@ IMPORTANT: Use this 3-PHASE WORKFLOW to handle different download behaviors:
 PHASE 1: INITIATE ALL PDF DOWNLOADS
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. Wait for the page to fully load (wait 3-5 seconds)
+1. Wait for the page to fully load (wait 2-3 seconds)
 
 2. SCROLL THROUGH THE ENTIRE PAGE to ensure all content is visible:
    - Scroll down to the bottom of the page
    - Some PDFs might be hidden below the fold
    - Make sure all sections and attachments are loaded
+   - Wait 1 second after scrolling for content to render
 
 3. COUNT how many PDF download buttons/links are on the page:
-   - Look for ALL PDF files and download buttons/links:
-     * "Download" buttons or links
+   - CRITICAL: Look in MULTIPLE places for PDF files:
+     * Attachments section/table (often the main location)
+     * "Download" or "View" buttons next to each PDF filename
      * Direct PDF links (ending in .pdf)
-     * "View Document" or "View Event Package" buttons
-     * Document tabs or sections with download options
-     * Attachment lists
      * "Event Package" or "Solicitation Package" sections
+     * Tabs or expandable sections that might hide PDFs
+   - COUNT EACH individual PDF file - if you see 4 rows in an attachments table, that's 4 PDFs
+   - VERIFY your count by listing each PDF filename you found
    - Note the TOTAL COUNT - you must download this many PDFs
-   - Example: "Found 8 PDF download buttons on this page"
+   - Example: "Found 4 PDFs: file1.pdf, file2.pdf, file3.pdf, file4.pdf"
+   - DOUBLE-CHECK: Does the count match the number of download buttons you see?
 
 4. For EACH PDF download button/link, click it and IMMEDIATELY check what happens:
 
    SCENARIO A: MODAL POPUP APPEARS
    - If a modal/dialog appears with a "Download Attachment" or similar button
    - Click the download button inside the modal
-   - Wait 2 seconds for the download to start
+   - Wait 1 second for the download to start
    - Close the modal if needed
    - Continue to next PDF
 
@@ -377,7 +380,7 @@ PHASE 1: INITIATE ALL PDF DOWNLOADS
    SCENARIO C: DIRECT DOWNLOAD (NO MODAL, NO NEW TAB)
    - If neither a modal nor a new tab appears
    - The file is downloading directly
-   - Wait 2 seconds
+   - Wait 1 second
    - Continue to next PDF
 
 5. Keep track of how many PDFs you've processed - it must match the total count from step 3
@@ -392,13 +395,21 @@ PHASE 2: DOWNLOAD PDFs FROM VIEWER TABS (IF ANY)
 
    For EACH PDF viewer tab:
    - Switch to that PDF tab
-   - YOU MUST call the 'download_pdf_from_viewer' tool with the current tab's URL
+   - YOU MUST use the download_pdf_from_viewer action with the current tab's URL
+   - Use this EXACT syntax:
+
+     download_pdf_from_viewer: url: <current_tab_url>
+
+     Example: download_pdf_from_viewer: url: https://caleprocure.ca.gov/psc/psfpd1/SUPPLIER/...
+
+   - DO NOT use evaluate() or JavaScript to call this tool
+   - DO NOT manually press Ctrl+S - let the tool handle it
    - Wait for the tool to return a success message showing "✓ SUCCESS: Downloaded"
    - Verify the tool output includes the filename and file size
    - DO NOT close the tab yet - move to the next PDF tab
 
-   CRITICAL: The 'download_pdf_from_viewer' tool is MANDATORY for PDF viewer tabs!
-   If you skip calling this tool, the PDF will NOT be downloaded!
+   CRITICAL: The download_pdf_from_viewer action is MANDATORY for PDF viewer tabs!
+   Call it as a direct action, NOT via JavaScript evaluation!
 
 8. If no PDF viewer tabs were opened in Phase 1, skip this phase
 
