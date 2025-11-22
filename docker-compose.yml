@@ -1,7 +1,5 @@
 # Agentic Document Extraction API - Docker Compose Configuration
 
-version: "3.8"
-
 services:
   api:
     build:

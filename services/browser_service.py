@@ -113,7 +113,7 @@ class BrowserService:
 
                 # Initialize Gemini LLM
                 self.llm = ChatGoogle(
-                    model="gemini-flash-latest",
+                    model="gemini-2.5-pro",
                 )
 
                 logger.info(
@@ -157,7 +157,7 @@ class BrowserService:
         # Store download_dir for use in the tool closure
         download_dir = self.download_dir
 
-        @tools.action('Download a PDF file that is currently open in the browser PDF viewer. Use this when the PDF is displayed but you cannot click the download button.')
+        @tools.action('Download the PDF file from the current browser tab. Call this immediately after a PDF opens in a new tab or when viewing a PDF. This tool will automatically press Ctrl+S to save the PDF to disk.')
         async def download_pdf_from_viewer(url: str, browser: Browser) -> ActionResult:
             """
             Download PDF from browser's PDF viewer using Playwright API.
@@ -400,9 +400,8 @@ PHASE 1: INITIATE ALL PDF DOWNLOADS
 
    SCENARIO B: NEW TAB OPENS WITH PDF VIEWER
    - If a new tab opens showing the PDF in browser viewer
-   - DO NOT close the tab yet
-   - DO NOT use the download tool yet
-   - Keep track of this tab - you'll download it in Phase 2
+   - Immediately call the download_pdf_from_viewer tool with the tab's URL
+   - Wait for the tool to confirm successful download
    - Continue to next PDF
 
    SCENARIO C: DIRECT DOWNLOAD (NO MODAL, NO NEW TAB)
@@ -416,45 +415,24 @@ PHASE 1: INITIATE ALL PDF DOWNLOADS
 6. Repeat steps 4-5 for ALL PDF download buttons/links on the page
 
 ═══════════════════════════════════════════════════════════════════════════════
-PHASE 2: DOWNLOAD PDFs FROM VIEWER TABS (IF ANY)
+PHASE 2: CLEANUP
 ═══════════════════════════════════════════════════════════════════════════════
 
-7. If you have any tabs that opened with PDF viewers (Scenario B from Phase 1):
-
-   For EACH PDF viewer tab:
-   - Switch to that PDF tab
-   - YOU MUST use the download_pdf_from_viewer action with the current tab's URL
-   - Use this EXACT syntax:
-
-     download_pdf_from_viewer: url: <current_tab_url>
-
-     Example: download_pdf_from_viewer: url: https://caleprocure.ca.gov/psc/psfpd1/SUPPLIER/...
-
-   - DO NOT use evaluate() or JavaScript to call this tool
-   - DO NOT manually press Ctrl+S - let the tool handle it
-   - Wait for the tool to return a success message showing "✓ SUCCESS: Downloaded"
-   - Verify the tool output includes the filename and file size
-   - DO NOT close the tab yet - move to the next PDF tab
-
-   CRITICAL: The download_pdf_from_viewer action is MANDATORY for PDF viewer tabs!
-   Call it as a direct action, NOT via JavaScript evaluation!
-
-8. If no PDF viewer tabs were opened in Phase 1, skip this phase
+7. After all PDF downloads are initiated (including calling download_pdf_from_viewer for any PDF viewer tabs):
+   - Close any remaining open tabs
+   - Return to the main page
 
 ═══════════════════════════════════════════════════════════════════════════════
-PHASE 3: VALIDATION AND CLEANUP
+PHASE 3: VALIDATION AND COMPLETION
 ═══════════════════════════════════════════════════════════════════════════════
 
-9. VALIDATE that you downloaded ALL PDFs:
+8. VALIDATE that you downloaded ALL PDFs:
    - Compare: How many PDFs did you count in step 3?
    - Compare: How many PDFs did you successfully download?
    - These numbers MUST MATCH
    - If they don't match, scroll through the page again to find missing PDFs
 
-10. After ALL PDFs have been downloaded and validated:
-    - Close any PDF viewer tabs that are still open
-    - Return to the main page
-    - Confirm completion: "Successfully downloaded X out of X PDFs"
+9. Once validation is complete, mark the task as done with a simple completion message
 
 DOWNLOAD DIRECTORY: {str(self.download_dir.absolute())}
 All PDFs must be saved to this exact location.
@@ -463,10 +441,10 @@ IMPORTANT NOTES:
 - Different websites behave differently - be adaptive!
 - Always check what happens after clicking a download button
 - Handle modals by clicking the download button inside them
-- Handle PDF viewer tabs by using the 'download_pdf_from_viewer' tool
-- Handle direct downloads by just waiting
+- Handle PDF viewer tabs by calling download_pdf_from_viewer tool immediately
+- Handle direct downloads by just waiting a moment
 
-Once ALL PDFs are downloaded, confirm completion.
+When you are completely finished, mark the task as done.
 """
 
             # Create a new agent with the specific task, browser instance, and custom tools

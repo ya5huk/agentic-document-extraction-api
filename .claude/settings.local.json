@@ -9,7 +9,8 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:docs.browser-use.com)",
       "Bash(dir:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(pip show:*)"
     ],
     "deny": [],
     "ask": []

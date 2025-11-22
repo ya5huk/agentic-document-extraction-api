@@ -2,6 +2,8 @@
 
 An AI-powered FastAPI service that autonomously discovers and downloads PDF documents from procurement websites (California eCal, SourceWell) using browser automation (Browser Use + Gemini/OpenAI), then uploads them to AWS S3.
 
+> For my & project's progression story click [here](/claude-progression/Claude%20Code%20Progression.md).
+
 ## Features
 
 - **AI-Powered Browser Automation**: Uses Browser Use library with Gemini Latest Flash model (default) or GPT-4o (if you choose so) for intelligent web navigation
