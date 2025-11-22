@@ -10,8 +10,9 @@ import os
 import time
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import urlparse
 
-from browser_use import Agent, ChatGoogle
+from browser_use import Agent, Browser, ChatGoogle, Tools, ActionResult
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class BrowserService:
         self,
         gemini_api_key: Optional[str] = None,
         download_dir: str = "./downloads",
-        headless: bool = True,
+        headless: bool = False,  # Changed to False for testing
         timeout: int = 120
     ):
         """
@@ -59,8 +60,9 @@ class BrowserService:
         self.headless = headless
         self.timeout = timeout
 
-        # Initialize LLM
+        # Initialize LLM and Browser
         self.llm = None
+        self.browser = None
         self.agent = None
 
         logger.info(
@@ -84,6 +86,172 @@ class BrowserService:
             )
 
             logger.info("Gemini LLM initialized successfully")
+
+    def _initialize_browser(self):
+        """
+        Initialize the Browser with download settings.
+
+        This is done lazily to avoid unnecessary initialization.
+        """
+        if self.browser is None:
+            logger.info("Initializing Browser with download settings...")
+
+            download_path = str(self.download_dir.absolute())
+
+            # Chrome preferences to force PDF downloads instead of viewing
+            # chrome_prefs = {
+            #     "download.default_directory": download_path,
+            #     "download.prompt_for_download": False,
+            #     "download.directory_upgrade": True,
+            #     "plugins.always_open_pdf_externally": True,  # Key setting: always download PDFs
+            #     "safebrowsing.enabled": True,
+            # }
+            # There is no such attribute to browser as chrome_prefs
+
+            # Create Browser instance with downloads_path and chrome preferences
+            self.browser = Browser(
+                downloads_path=download_path,
+                headless=self.headless,
+            )
+
+            logger.info("="*70)
+            logger.info("BROWSER DOWNLOAD CONFIGURATION")
+            logger.info("="*70)
+            logger.info(f"Downloads will be saved to: {download_path}")
+            logger.info(f"Headless mode: {self.headless}")
+            logger.info("="*70)
+
+    def _create_download_tools(self):
+        """
+        Create custom tools for PDF downloads.
+
+        Creates a custom tool that can download PDFs when they open in
+        the browser's PDF viewer, bypassing the limitation where browser-use
+        cannot interact with the browser's UI controls.
+
+        Returns:
+            Tools instance with registered actions
+        """
+        logger.info("Creating custom tools for PDF downloads...")
+
+        tools = Tools()
+
+        # Store download_dir for use in the tool closure
+        download_dir = self.download_dir
+
+        @tools.action('Download a PDF file that is currently open in the browser PDF viewer. Use this when the PDF is displayed but you cannot click the download button.')
+        async def download_pdf_from_viewer(url: str, browser: Browser) -> ActionResult:
+            """
+            Download PDF from browser's PDF viewer using Playwright API.
+
+            This tool accesses the underlying Playwright browser to trigger
+            PDF downloads programmatically, bypassing the browser UI limitation.
+
+            Args:
+                url: The URL of the page showing the PDF
+                browser: Browser instance (auto-injected by browser-use)
+
+            Returns:
+                ActionResult with success/error information
+            """
+            try:
+                logger.info(
+                    f"Attempting to download PDF from viewer at: {url}")
+
+                # Access the underlying Playwright browser instance
+                playwright_browser = await browser.browser.get_playwright_browser()
+
+                if not playwright_browser.contexts:
+                    error_msg = "No active browser context found."
+                    logger.error(error_msg)
+                    return ActionResult(
+                        extracted_content=error_msg,
+                        error="No browser context"
+                    )
+
+                # Get the browser context
+                context = playwright_browser.contexts[0]
+
+                if not context.pages:
+                    error_msg = "No active pages found in browser."
+                    logger.error(error_msg)
+                    return ActionResult(
+                        extracted_content=error_msg,
+                        error="No pages found"
+                    )
+
+                # Find the page that matches the URL
+                page = next(
+                    (p for p in context.pages if urlparse(url).netloc in p.url),
+                    None
+                )
+
+                if not page:
+                    # If no exact match, try to get the most recent page
+                    page = context.pages[-1]
+                    logger.warning(
+                        f"No page found matching {url}, using most recent page: {page.url}"
+                    )
+
+                logger.info(f"Found page: {page.url}")
+
+                # Use Playwright's download event handling with keyboard shortcut
+                # Ctrl+S works universally across different PDF viewers
+                logger.info("Triggering download with Ctrl+S...")
+
+                async with page.expect_download(timeout=10000) as download_info:
+                    await page.keyboard.press('Control+S')
+
+                download = await download_info.value
+                filename = download.suggested_filename
+
+                # Save to the configured download directory
+                download_path = os.path.join(
+                    str(download_dir.absolute()), filename)
+
+                logger.info(f"Saving PDF to: {download_path}")
+                await download.save_as(download_path)
+
+                # Verify the file was actually saved
+                import time
+                time.sleep(1)  # Give filesystem a moment to sync
+
+                if os.path.exists(download_path):
+                    file_size = os.path.getsize(download_path)
+                    logger.info(f"✓ Successfully downloaded PDF: {filename}")
+                    logger.info(f"✓ File size: {file_size:,} bytes")
+                    logger.info(f"✓ Location: {download_path}")
+
+                    return ActionResult(
+                        extracted_content=f"✓ SUCCESS: Downloaded '{filename}' ({file_size:,} bytes) to {download_path}",
+                        include_in_memory=True
+                    )
+                else:
+                    error_msg = f"✗ FAILED: File was not saved to {download_path}"
+                    logger.error(error_msg)
+                    return ActionResult(
+                        extracted_content=error_msg,
+                        error="File not found after download"
+                    )
+
+            except TimeoutError:
+                error_msg = "Timeout waiting for download to start. The PDF might not support direct download, or the page might not be a PDF viewer."
+                logger.error(error_msg)
+                return ActionResult(
+                    extracted_content=error_msg,
+                    error="Download timeout"
+                )
+            except Exception as e:
+                error_msg = f"Failed to download PDF: {str(e)}"
+                logger.error(error_msg)
+                logger.exception("Full error:")
+                return ActionResult(
+                    extracted_content=error_msg,
+                    error=str(e)
+                )
+
+        logger.info("Custom tools created successfully")
+        return tools
 
     def _get_browser_config(self):
         """
@@ -139,16 +307,21 @@ class BrowserService:
             # Clear download directory before starting
             self._clear_download_directory()
 
-            # Initialize LLM if not already done
+            # Initialize LLM and Browser if not already done
             self._initialize_llm()
+            self._initialize_browser()
+
+            # Create custom tools for this task (following browser-use pattern)
+            tools = self._create_download_tools()
 
             # Create task for the AI agent
             task = f"""
 Navigate to this procurement/solicitation page: {url}
 
-Your task is to DOWNLOAD (not just view) ALL PDF documents available on this page to the directory specified in config.
+Your task is to DOWNLOAD (not just view) ALL PDF documents available on this page.
 
 IMPORTANT INSTRUCTIONS:
+
 1. Wait for the page to fully load (wait 3-5 seconds)
 
 2. Look for PDF files and download buttons/links:
@@ -159,61 +332,63 @@ IMPORTANT INSTRUCTIONS:
    - Attachment lists
    - "Event Package" or "Solicitation Package" sections
 
-3. For EACH PDF you find:
-   Step A: Click on the PDF link/button to open it
+3. For EACH PDF you find - MANDATORY WORKFLOW:
 
-   Step B: If the PDF opens in a NEW BROWSER TAB/WINDOW:
-      - Switch to that new tab/window
-      - Use keyboard shortcut Ctrl+S (or right-click and select "Save as")
-      - This will trigger the Save dialog
-      - The file should download automatically to the configured downloads folder
-      - Wait 3-5 seconds for the download to complete
-      - Close the PDF tab/window
-      - Return to the main page to find more PDFs
+   YOU MUST FOLLOW THIS EXACT SEQUENCE FOR EVERY PDF:
 
-   Step C: If a direct "Download" button exists:
-      - Click it to download the file directly
-      - Wait 3-5 seconds for download to complete
+   Step 1: Click the download button/link
 
-4. Repeat for ALL PDFs on the page
+   Step 2: IMMEDIATELY check your open tabs - did a new tab open?
 
-5. Download directory: {str(self.download_dir.absolute())}
+   Step 3: If YES (a new tab opened):
+      - This means the PDF opened in browser viewer
+      - Switch to that new tab
+      - YOU MUST call the 'download_pdf_from_viewer' tool with the tab's current URL
+      - Wait for tool to return success message
+      - Verify the tool output says "Successfully downloaded"
+      - Only then close the PDF tab
 
-Common button/link text to look for:
-- "Download" or "Download PDF"
-- "View Event Package" (this will open PDF in new tab - then use Ctrl+S)
-- "View Document" (this will open PDF in new tab - then use Ctrl+S)
-- "Save" or "Save As"
-- "Attachments"
-- "Documents"
-- Direct .pdf links (these open in new tab - then use Ctrl+S)
+   Step 4: If NO (no new tab):
+      - Wait 5 seconds for direct download
+      - Then continue to next PDF
 
-CRITICAL WORKFLOW:
-1. Click PDF link → New tab opens with PDF
-2. Use Ctrl+S to save the PDF
-3. Wait for download to complete
-4. Close the PDF tab
-5. Return to main page
-6. Find next PDF and repeat
+   CRITICAL: If you close a PDF tab without first calling download_pdf_from_viewer,
+   the file will NOT be downloaded!
 
-Your goal is to DOWNLOAD all PDF files to the folder, not just view them.
+4. Make sure each PDF is fully downloaded before proceeding to the next one.
+
+5. Repeat for ALL PDFs on the page
+
+6. Download directory: {str(self.download_dir.absolute())}
+
+CRITICAL INSTRUCTIONS FOR DOWNLOADING:
+- When you click a PDF link/button and it opens in a NEW TAB showing the PDF document,
+  you MUST immediately use the 'download_pdf_from_viewer' tool with that tab's URL.
+- Do NOT just close the tab without downloading - use the tool first!
+- The tool will programmatically save the PDF to the download directory.
+- After the tool confirms success, then close the PDF tab and continue.
+
+DOWNLOAD DIRECTORY: {str(self.download_dir.absolute())}
+All PDFs must be saved to this exact location.
+
+Your goal is to DOWNLOAD all PDF files to the download directory.
+The tool will verify each file was saved and show the exact file path.
 
 Once ALL PDFs are downloaded, confirm completion.
 """
 
-            # Get browser configuration
-            browser_config = self._get_browser_config()
-
-            # Create a new agent with the specific task and browser config
-            logger.info("Creating Browser Use agent with task...")
+            # Create a new agent with the specific task, browser instance, and custom tools
             logger.info(
-                f"Download directory: {browser_config['downloads_path']}")
+                "Creating Browser Use agent with task and custom tools...")
+            logger.info(
+                f"Download directory: {str(self.download_dir.absolute())}")
 
             agent = Agent(
                 task=task,
                 llm=self.llm,
+                browser=self.browser,
                 use_vision=True,
-                browser_config=browser_config,
+                tools=tools,  # Use the locally created tools instance
             )
 
             # Run the agent
@@ -226,6 +401,12 @@ Once ALL PDFs are downloaded, confirm completion.
             elapsed_time = time.time() - start_time
             logger.info(f"Agent completed in {elapsed_time:.2f} seconds")
             logger.info(f"Agent result: {result}")
+
+            logger.info("="*60)
+            logger.info('Agent history:')
+            logger.info("="*60)
+            logger.info(f"Is successful: {result.is_successful()}")
+            logger.info(f"Were errors: {result.has_errors()}")
 
             # Get list of downloaded files
             downloaded_files = self._get_downloaded_files()

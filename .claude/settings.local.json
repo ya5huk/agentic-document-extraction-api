@@ -5,7 +5,10 @@
       "Bash(nul)",
       "Bash(git init:*)",
       "WebSearch",
-      "Bash(python main.py:*)"
+      "Bash(python main.py:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.browser-use.com)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []
