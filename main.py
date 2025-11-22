@@ -86,7 +86,7 @@ async def extract_pdfs(request: ExtractionRequest):
         logger.info("Step 1: Initializing browser service...")
         browser_service = BrowserService(
             download_dir="./downloads",
-            headless=True,  # Run in headless mode for production
+            headless=False,  # Changed to False for testing
             timeout=120
         )
         logger.info("✓ Browser service initialized")
@@ -106,7 +106,8 @@ async def extract_pdfs(request: ExtractionRequest):
         logger.info(f"✓ Downloaded {len(downloaded_files)} PDF(s)")
 
         # Step 3: Initialize S3 service and upload files
-        logger.info(f"\nStep 3: Uploading {len(downloaded_files)} PDFs to S3...")
+        logger.info(
+            f"\nStep 3: Uploading {len(downloaded_files)} PDFs to S3...")
         s3_service = S3Service()
 
         # Upload all PDFs to S3
@@ -129,7 +130,8 @@ async def extract_pdfs(request: ExtractionRequest):
             except Exception as e:
                 logger.warning(f"Failed to delete {file_path}: {e}")
 
-        logger.info(f"✓ Cleaned up {cleanup_count}/{len(downloaded_files)} temporary file(s)")
+        logger.info(
+            f"✓ Cleaned up {cleanup_count}/{len(downloaded_files)} temporary file(s)")
 
         # Step 5: Return success response
         logger.info("\n" + "=" * 70)
@@ -164,7 +166,8 @@ async def extract_pdfs(request: ExtractionRequest):
                         Path(file_path).unlink()
                         logger.debug(f"Cleaned up: {Path(file_path).name}")
                 except Exception as cleanup_error:
-                    logger.warning(f"Cleanup failed for {file_path}: {cleanup_error}")
+                    logger.warning(
+                        f"Cleanup failed for {file_path}: {cleanup_error}")
 
         raise HTTPException(
             status_code=500,

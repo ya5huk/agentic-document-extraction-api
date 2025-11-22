@@ -29,7 +29,7 @@ class BrowserService:
         self,
         gemini_api_key: Optional[str] = None,
         download_dir: str = "./downloads",
-        headless: bool = False,  # Changed to False for testing
+        headless: bool = True,
         timeout: int = 120
     ):
         """
@@ -320,59 +320,82 @@ Navigate to this procurement/solicitation page: {url}
 
 Your task is to DOWNLOAD (not just view) ALL PDF documents available on this page.
 
-IMPORTANT INSTRUCTIONS:
+IMPORTANT: Use this 3-PHASE WORKFLOW to handle different download behaviors:
+
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 1: INITIATE ALL PDF DOWNLOADS
+═══════════════════════════════════════════════════════════════════════════════
 
 1. Wait for the page to fully load (wait 3-5 seconds)
 
-2. Look for PDF files and download buttons/links:
-   - "Download" buttons or links (PREFERRED - click these first!)
+2. Look for ALL PDF files and download buttons/links on the page:
+   - "Download" buttons or links
    - Direct PDF links (ending in .pdf)
    - "View Document" or "View Event Package" buttons
    - Document tabs or sections with download options
    - Attachment lists
    - "Event Package" or "Solicitation Package" sections
 
-3. For EACH PDF you find - MANDATORY WORKFLOW:
+3. For EACH PDF download button/link, click it and IMMEDIATELY check what happens:
 
-   YOU MUST FOLLOW THIS EXACT SEQUENCE FOR EVERY PDF:
+   SCENARIO A: MODAL POPUP APPEARS
+   - If a modal/dialog appears with a "Download Attachment" or similar button
+   - Click the download button inside the modal
+   - Wait 2 seconds for the download to start
+   - Close the modal if needed
+   - Continue to next PDF
 
-   Step 1: Click the download button/link
+   SCENARIO B: NEW TAB OPENS WITH PDF VIEWER
+   - If a new tab opens showing the PDF in browser viewer
+   - DO NOT close the tab yet
+   - DO NOT use the download tool yet
+   - Keep track of this tab - you'll download it in Phase 2
+   - Continue to next PDF
 
-   Step 2: IMMEDIATELY check your open tabs - did a new tab open?
+   SCENARIO C: DIRECT DOWNLOAD (NO MODAL, NO NEW TAB)
+   - If neither a modal nor a new tab appears
+   - The file is downloading directly
+   - Wait 2 seconds
+   - Continue to next PDF
 
-   Step 3: If YES (a new tab opened):
-      - This means the PDF opened in browser viewer
-      - Switch to that new tab
-      - YOU MUST call the 'download_pdf_from_viewer' tool with the tab's current URL
-      - Wait for tool to return success message
-      - Verify the tool output says "Successfully downloaded"
-      - Only then close the PDF tab
+4. Repeat step 3 for ALL PDF download buttons/links on the page
 
-   Step 4: If NO (no new tab):
-      - Wait 5 seconds for direct download
-      - Then continue to next PDF
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 2: DOWNLOAD PDFs FROM VIEWER TABS (IF ANY)
+═══════════════════════════════════════════════════════════════════════════════
 
-   CRITICAL: If you close a PDF tab without first calling download_pdf_from_viewer,
-   the file will NOT be downloaded!
+5. If you have any tabs that opened with PDF viewers (Scenario B from Phase 1):
 
-4. Make sure each PDF is fully downloaded before proceeding to the next one.
+   For EACH PDF viewer tab:
+   - Switch to that PDF tab
+   - YOU MUST call the 'download_pdf_from_viewer' tool with the current tab's URL
+   - Wait for the tool to return a success message showing "✓ SUCCESS: Downloaded"
+   - Verify the tool output includes the filename and file size
+   - DO NOT close the tab yet - move to the next PDF tab
 
-5. Repeat for ALL PDFs on the page
+   CRITICAL: The 'download_pdf_from_viewer' tool is MANDATORY for PDF viewer tabs!
+   If you skip calling this tool, the PDF will NOT be downloaded!
 
-6. Download directory: {str(self.download_dir.absolute())}
+6. If no PDF viewer tabs were opened in Phase 1, skip this phase
 
-CRITICAL INSTRUCTIONS FOR DOWNLOADING:
-- When you click a PDF link/button and it opens in a NEW TAB showing the PDF document,
-  you MUST immediately use the 'download_pdf_from_viewer' tool with that tab's URL.
-- Do NOT just close the tab without downloading - use the tool first!
-- The tool will programmatically save the PDF to the download directory.
-- After the tool confirms success, then close the PDF tab and continue.
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 3: CLEANUP
+═══════════════════════════════════════════════════════════════════════════════
+
+7. After ALL PDFs have been downloaded:
+   - Close any PDF viewer tabs that are still open
+   - Return to the main page
+   - Confirm completion with the total number of PDFs downloaded
 
 DOWNLOAD DIRECTORY: {str(self.download_dir.absolute())}
 All PDFs must be saved to this exact location.
 
-Your goal is to DOWNLOAD all PDF files to the download directory.
-The tool will verify each file was saved and show the exact file path.
+IMPORTANT NOTES:
+- Different websites behave differently - be adaptive!
+- Always check what happens after clicking a download button
+- Handle modals by clicking the download button inside them
+- Handle PDF viewer tabs by using the 'download_pdf_from_viewer' tool
+- Handle direct downloads by just waiting
 
 Once ALL PDFs are downloaded, confirm completion.
 """
