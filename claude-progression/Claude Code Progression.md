@@ -43,7 +43,7 @@ This is something Claude struggled with until I updated the web-search's llm pro
 
 Hit limit:
 
-![Claude Coode limit](Hit%20claude%20code%20limit)
+![Claude Code limit](Hit%20claude%20code%20limit.png)
 
 40k tokens research smh
 
