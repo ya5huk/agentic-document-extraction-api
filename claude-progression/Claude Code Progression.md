@@ -34,4 +34,8 @@ This is something Claude struggled with until I updated the web-search's llm (go
 
 Hit limit:
 
-![Claude Coode limit](image.png)
+![Claude Coode limit](Hit%20claude%20code%20limit)
+
+40k tokens research smh
+
+![40k token research](40ktokensresearch.png)
