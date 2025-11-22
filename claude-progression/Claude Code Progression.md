@@ -1,3 +1,12 @@
+# Everything to do with my and this project's progression.
+
+> All was done in a scope of 24hrs. In reality I worked:
+>
+> - from 9pm to 1am
+> - 12am to 8pm (next day)
+
+## Some stuff I learned 'bout Claude Code
+
 Create a plan first before big work
 
 /memory
@@ -52,3 +61,9 @@ More adjustments now... Btw, tabs game is insane rn:
 
 16:43 Switched to Codex
 16:44 Realized my Copilot Subscription is not enough
+17:22 Switching Browser Use agent to GPT-4o even though flash is required. I hit my limit.
+![Gemini 2.5 flash limit hit](gemini-flash-limit-hit.png)
+
+Looks like GPT is not so smart, changed to gemini - paying for usage.
+
+It appears not all models are equal. Not at all and lot of time **was spent dumblessly to try and do stuff using other models**. F.e. changing to copilot or to gpt-4o as browser use agent was completely useless as they took me back than forward.
