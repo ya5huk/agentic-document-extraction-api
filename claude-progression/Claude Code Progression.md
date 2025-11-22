@@ -47,3 +47,8 @@ Ok, 12hrs older Ilan here (I slept), this turns to be a much bigger issue as bro
 More adjustments now... Btw, tabs game is insane rn:
 
 ![Many tabs](many-tabs.png)
+
+16:13 I hit my Claude Code limit once again, though I really tried to keep the context window small and not overly use it. It resets in 40 minutes so I will use Copilot Agent for now / Codex for now.
+
+16:43 Switched to Codex
+16:44 Realized my Copilot Subscription is not enough
