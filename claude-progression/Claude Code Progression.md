@@ -1,37 +1,6 @@
 # Everything to do with my and this project's progression.
 
-> All was done in a scope of 24hrs. In reality I worked:
->
-> - from 9pm to 1am
-> - 12am to 8pm (next day)
-
-## Some stuff I learned 'bout Claude Code
-
-Create a plan first before big work
-
-`/memory`
-
-You can edit:
-
-1. user memory in CLAUDE.md in .claude folder in ...
-2. project memory in CLAUDE.md in project
-
-**For big plans use :** "Make the plan multi-phase"
-
-`/context`
-
-See how much context is left for you
-
-If context is ending -> You can ask claude code to create a github issue and check whats have been done, ...
-
-`/clear` - clear context window
-
-`claude --continue` if u exited the session
-
-**My workflow with this project:**
-
-1. Understand the task & whats setup required
-2. Download whats needed and start building using phases
+# Working on this project
 
 ## Claude couldn't get right:
 
@@ -71,3 +40,42 @@ Looks like GPT is not so smart, changed to gemini - paying for usage.
 ## Model usage conclusion
 
 It appears not all models are equal. Not at all and lot of time **was spent dumblessly to try and do stuff using other models**. F.e. changing to copilot or to gpt-4o as browser use agent was completely useless as they took me back than forward.
+
+## Finish
+
+At 20:40 I hit my Claude Code limit again, expressing my anger on a crash happening after I told Claude Code it'll happen. I almost Ctrl+C'd it but the fallback worked! All the files were downloaded! This will be in the Demo!
+
+# Learning about Clade Code
+
+> All was done in a scope of 24hrs. In reality I worked:
+>
+> - from 9pm to 1am
+> - 12am to 8pm (next day)
+
+## Some stuff I learned 'bout Claude Code
+
+Create a plan first before big work
+
+`/memory`
+
+You can edit:
+
+1. user memory in CLAUDE.md in .claude folder in ...
+2. project memory in CLAUDE.md in project
+
+**For big plans use :** "Make the plan multi-phase"
+
+`/context`
+
+See how much context is left for you
+
+If context is ending -> You can ask claude code to create a github issue and check whats have been done, ...
+
+`/clear` - clear context window
+
+`claude --continue` if u exited the session
+
+**My workflow with this project:**
+
+1. Understand the task & whats setup required
+2. Download whats needed and start building using phases
