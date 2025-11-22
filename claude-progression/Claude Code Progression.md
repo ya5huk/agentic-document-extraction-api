@@ -30,7 +30,7 @@ Used wrongly Google AI with wrong lib: langchanin... instead of importing
 GoogleChat from browser_use...
 
 in caleprocure - the PDFs are not automatically downloaded but pop up in a new window.
-This is something Claude struggled with until I updated the web-search's llm (google flasg) prompt
+This is something Claude struggled with until I updated the web-search's llm prompt.
 
 Hit limit:
 
@@ -39,3 +39,5 @@ Hit limit:
 40k tokens research smh
 
 ![40k token research](40ktokensresearch.png)
+
+Ok, 12hrs older Ilan here (I slept), this turns to be a much bigger issue as browser-use can't download those pdfs because it cannot find the downloading button which is out of the browser and in the browser tools. Anyways, I coded a tool to download them using playwright API.
