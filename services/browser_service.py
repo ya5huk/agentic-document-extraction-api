@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urlparse
 
-from browser_use import Agent, Browser, ChatGoogle, Tools, ActionResult
+from browser_use import Agent, Browser, ChatGoogle, ChatOpenAI, Tools, ActionResult
 
 logger = logging.getLogger(__name__)
 
@@ -27,30 +27,27 @@ class BrowserService:
 
     def __init__(
         self,
-        gemini_api_key: Optional[str] = None,
         download_dir: str = "./downloads",
         headless: bool = True,
         timeout: int = 120
     ):
         """
-        Initialize browser service with Gemini AI.
+        Initialize browser service with AI model.
 
         Args:
-            gemini_api_key: Gemini API key (defaults to env variable)
             download_dir: Directory for downloaded files (default: ./downloads)
             headless: Run browser in headless mode (default: True)
             timeout: Timeout for operations in seconds (default: 120)
 
         Raises:
-            ValueError: If Gemini API key is missing
+            ValueError: If required API key is missing
         """
-        # Get Gemini API key
-        self.gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
-        if not self.gemini_api_key:
-            raise ValueError(
-                "Gemini API key is required. Please set GEMINI_API_KEY "
-                "environment variable or pass it to constructor."
-            )
+        # Get model selection from environment (default to gemini)
+        self.model_type = os.getenv("BROWSER_MODEL", "gemini").lower()
+
+        # Get authentication credentials (optional)
+        self.auth_username = os.getenv("SITE_USERNAME")
+        self.auth_password = os.getenv("SITE_PASSWORD")
 
         # Set up download directory
         self.download_dir = Path(download_dir)
@@ -66,26 +63,61 @@ class BrowserService:
         self.agent = None
 
         logger.info(
-            f"Browser service initialized (headless={headless}, download_dir={download_dir})")
+            f"Browser service initialized (model={self.model_type}, headless={headless}, download_dir={download_dir})")
 
     def _initialize_llm(self):
         """
-        Initialize the Gemini LLM.
+        Initialize the LLM based on BROWSER_MODEL environment variable.
 
+        Supports both Gemini and OpenAI models.
         This is done lazily to avoid unnecessary initialization.
         """
         if self.llm is None:
-            logger.info("Initializing Gemini LLM...")
+            if self.model_type == "openai":
+                logger.info("Initializing OpenAI LLM...")
 
-            # Set environment variable for Gemini API key (browser-use uses this)
-            os.environ["GOOGLE_API_KEY"] = self.gemini_api_key
+                # Get OpenAI API key from environment
+                openai_api_key = os.getenv("OPENAI_API_KEY")
+                if not openai_api_key:
+                    raise ValueError(
+                        "OpenAI API key is required when BROWSER_MODEL=openai. "
+                        "Please set OPENAI_API_KEY environment variable."
+                    )
+                else:
+                    logger.info("OpenAI API key found in environment")
 
-            # Initialize Gemini LLM with proper configuration for browser-use
-            self.llm = ChatGoogle(
-                model="gemini-flash-latest",
-            )
+                # Set environment variable (browser-use uses this)
+                os.environ["OPENAI_API_KEY"] = openai_api_key
 
-            logger.info("Gemini LLM initialized successfully")
+                # Initialize OpenAI LLM
+                self.llm = ChatOpenAI(
+                    model="gpt-4o",
+                )
+
+                logger.info(
+                    "OpenAI LLM (gpt-4o) initialized successfully")
+
+            else:  # Default to gemini
+                logger.info("Initializing Gemini LLM...")
+
+                # Get Gemini API key from environment
+                gemini_api_key = os.getenv("GEMINI_API_KEY")
+                if not gemini_api_key:
+                    raise ValueError(
+                        "Gemini API key is required when BROWSER_MODEL=gemini. "
+                        "Please set GEMINI_API_KEY environment variable."
+                    )
+
+                # Set environment variable (browser-use uses this)
+                os.environ["GOOGLE_API_KEY"] = gemini_api_key
+
+                # Initialize Gemini LLM
+                self.llm = ChatGoogle(
+                    model="gemini-flash-latest",
+                )
+
+                logger.info(
+                    "Gemini LLM (gemini-flash-latest) initialized successfully")
 
     def _initialize_browser(self):
         """
@@ -98,28 +130,14 @@ class BrowserService:
 
             download_path = str(self.download_dir.absolute())
 
-            # Chrome preferences to force PDF downloads instead of viewing
-            # chrome_prefs = {
-            #     "download.default_directory": download_path,
-            #     "download.prompt_for_download": False,
-            #     "download.directory_upgrade": True,
-            #     "plugins.always_open_pdf_externally": True,  # Key setting: always download PDFs
-            #     "safebrowsing.enabled": True,
-            # }
-            # There is no such attribute to browser as chrome_prefs
-
-            # Create Browser instance with downloads_path and chrome preferences
+            # Create Browser instance with download path
             self.browser = Browser(
                 downloads_path=download_path,
                 headless=self.headless,
             )
 
-            logger.info("="*70)
-            logger.info("BROWSER DOWNLOAD CONFIGURATION")
-            logger.info("="*70)
-            logger.info(f"Downloads will be saved to: {download_path}")
-            logger.info(f"Headless mode: {self.headless}")
-            logger.info("="*70)
+            logger.info(
+                f"Browser initialized with downloads_path: {download_path}")
 
     def _create_download_tools(self):
         """
@@ -328,11 +346,21 @@ class BrowserService:
             # Create custom tools for this task (following browser-use pattern)
             tools = self._create_download_tools()
 
+            # Build auth instructions if credentials are available
+            auth_info = ""
+            if self.auth_username and self.auth_password:
+                auth_info = f"""
+If you encounter a login page, use these credentials:
+- Username: {self.auth_username}
+- Password: {self.auth_password}
+
+"""
+
             # Create task for the AI agent
             task = f"""
 Navigate to this procurement/solicitation page: {url}
 
-Your task is to DOWNLOAD (not just view) ALL PDF documents available on this page.
+{auth_info}Your task is to DOWNLOAD (not just view) ALL PDF documents available on this page.
 
 IMPORTANT: Use this 3-PHASE WORKFLOW to handle different download behaviors:
 

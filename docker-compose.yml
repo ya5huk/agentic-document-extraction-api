@@ -1,0 +1,36 @@
+# Agentic Document Extraction API - Docker Compose Configuration
+
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agentic-document-extraction-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override specific settings for Docker environment
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Mount downloads directory for persistence (optional)
+      - ./downloads:/app/downloads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Resource limits (optional - adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
