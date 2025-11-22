@@ -45,7 +45,7 @@ It appears not all models are equal. Not at all and lot of time **was spent dumb
 
 At 20:40 I hit my Claude Code limit again, expressing my anger on a crash happening after I told Claude Code it'll happen. I almost Ctrl+C'd it but the fallback worked! All the files were downloaded! This will be in the Demo!
 
-# Learning about Clade Code
+# Learning about Claude Code
 
 > All was done in a scope of 24hrs. In reality I worked:
 >
