@@ -13,6 +13,7 @@ from typing import List, Optional
 from urllib.parse import urlparse
 
 from browser_use import Agent, Browser, ChatGoogle, ChatOpenAI, Tools, ActionResult
+from browser_use.browser.session import BrowserSession
 
 logger = logging.getLogger(__name__)
 
@@ -157,8 +158,8 @@ class BrowserService:
         # Store download_dir for use in the tool closure
         download_dir = self.download_dir
 
-        @tools.action('Download the PDF file from the current browser tab. Call this immediately after a PDF opens in a new tab or when viewing a PDF. This tool will automatically press Ctrl+S to save the PDF to disk.')
-        async def download_pdf_from_viewer(url: str, browser: Browser) -> ActionResult:
+        @tools.action('REQUIRED: Save the PDF to disk by pressing Ctrl+S. You MUST call this for every tab showing a PDF viewer, otherwise the PDF is only being viewed and NOT downloaded! Pass the tab URL as the url parameter.')
+        async def download_pdf_from_viewer(url: str, browser_session: BrowserSession) -> ActionResult:
             """
             Download PDF from browser's PDF viewer using Playwright API.
 
@@ -167,7 +168,7 @@ class BrowserService:
 
             Args:
                 url: The URL of the page showing the PDF
-                browser: Browser instance (auto-injected by browser-use)
+                browser_session: BrowserSession instance (auto-injected by browser-use)
 
             Returns:
                 ActionResult with success/error information
@@ -176,65 +177,74 @@ class BrowserService:
                 logger.info(
                     f"Attempting to download PDF from viewer at: {url}")
 
-                # Access the underlying Playwright browser instance
-                playwright_browser = await browser.browser.get_playwright_browser()
-
-                if not playwright_browser.contexts:
-                    error_msg = "No active browser context found."
-                    logger.error(error_msg)
-                    return ActionResult(
-                        extracted_content=error_msg,
-                        error="No browser context"
-                    )
-
-                # Get the browser context
-                context = playwright_browser.contexts[0]
-
-                if not context.pages:
-                    error_msg = "No active pages found in browser."
-                    logger.error(error_msg)
-                    return ActionResult(
-                        extracted_content=error_msg,
-                        error="No pages found"
-                    )
-
-                # Find the page that matches the URL
-                page = next(
-                    (p for p in context.pages if urlparse(url).netloc in p.url),
-                    None
-                )
+                # Get the current page from browser session
+                page = await browser_session.get_current_page()
 
                 if not page:
-                    # If no exact match, try to get the most recent page
-                    page = context.pages[-1]
-                    logger.warning(
-                        f"No page found matching {url}, using most recent page: {page.url}"
+                    error_msg = "No active page found in browser."
+                    logger.error(error_msg)
+                    return ActionResult(
+                        extracted_content=error_msg,
+                        error="No active page"
                     )
 
-                logger.info(f"Found page: {page.url}")
+                logger.info(f"Found page: {page.get_url()}")
 
                 # Use Playwright's download event handling with keyboard shortcut
                 # Ctrl+S works universally across different PDF viewers
                 logger.info("Triggering download with Ctrl+S...")
 
-                async with page.expect_download(timeout=10000) as download_info:
+                filename = None
+                download_path = None
+
+                # Try the proper way first: expect_download + Ctrl+S
+                try:
+
+                    async with page.expect_download(timeout=10000) as download_info:
+                        await page.keyboard.press('Control+S')
+
+                    download = await download_info.value
+                    filename = download.suggested_filename
+
+                    # Save to the configured download directory
+                    download_path = os.path.join(
+                        str(download_dir.absolute()), filename)
+
+                    logger.info(f"Saving PDF to: {download_path}")
+                    await download.save_as(download_path)
+
+                except (AttributeError, TimeoutError, Exception) as e:
+                    # Fallback: Just press Ctrl+S and wait for browser to handle it
+                    logger.warning(
+                        f"expect_download failed ({str(e)}), falling back to simple Ctrl+S")
+                    logger.info("Pressing Ctrl+S and waiting for download...")
+
                     await page.keyboard.press('Control+S')
 
-                download = await download_info.value
-                filename = download.suggested_filename
+                    # Wait for download to complete (browser will save to downloads_path)
+                    import asyncio
+                    # Give browser time to save the file
+                    await asyncio.sleep(3)
 
-                # Save to the configured download directory
-                download_path = os.path.join(
-                    str(download_dir.absolute()), filename)
-
-                logger.info(f"Saving PDF to: {download_path}")
-                await download.save_as(download_path)
+                    # Try to find the most recent PDF in download directory
+                    import glob
+                    pdf_files = glob.glob(
+                        os.path.join(str(download_dir.absolute()), "*.pdf"))
+                    if pdf_files:
+                        # Get most recently modified PDF
+                        download_path = max(pdf_files, key=os.path.getmtime)
+                        filename = os.path.basename(download_path)
+                        logger.info(
+                            f"Found downloaded file: {filename}")
+                    else:
+                        logger.warning(
+                            "No PDF files found in download directory after Ctrl+S")
 
                 # Verify the file was actually saved
                 import time
                 time.sleep(1)  # Give filesystem a moment to sync
 
-                if os.path.exists(download_path):
+                if download_path and os.path.exists(download_path):
                     file_size = os.path.getsize(download_path)
                     logger.info(f"✓ Successfully downloaded PDF: {filename}")
                     logger.info(f"✓ File size: {file_size:,} bytes")
@@ -245,7 +255,7 @@ class BrowserService:
                         include_in_memory=True
                     )
                 else:
-                    error_msg = f"✗ FAILED: File was not saved to {download_path}"
+                    error_msg = f"✗ FAILED: No file was saved to {download_dir.absolute()}"
                     logger.error(error_msg)
                     return ActionResult(
                         extracted_content=error_msg,
@@ -269,6 +279,8 @@ class BrowserService:
                 )
 
         logger.info("Custom tools created successfully")
+        logger.info(
+            f"Registered tools: {[action for action in dir(tools) if not action.startswith('_')]}")
         return tools
 
     def _get_browser_config(self):
@@ -360,91 +372,51 @@ If you encounter a login page, use these credentials:
             task = f"""
 Navigate to this procurement/solicitation page: {url}
 
-{auth_info}Your task is to DOWNLOAD (not just view) ALL PDF documents available on this page.
+{auth_info}YOUR GOAL: Save ALL PDF files to this directory: {str(self.download_dir.absolute())}
 
-IMPORTANT: Use this 3-PHASE WORKFLOW to handle different download behaviors:
+⚠️ CRITICAL: When you click a PDF link and it opens in a new browser tab, you MUST use the download_pdf_from_viewer tool to save it to disk!
 
-═══════════════════════════════════════════════════════════════════════════════
-PHASE 1: INITIATE ALL PDF DOWNLOADS
-═══════════════════════════════════════════════════════════════════════════════
+STEP-BY-STEP INSTRUCTIONS:
 
-1. Wait for the page to fully load (wait 2-3 seconds)
+1. Wait for page to load (2-3 seconds), then scroll to see all content
 
-2. SCROLL THROUGH THE ENTIRE PAGE to ensure all content is visible:
-   - Scroll down to the bottom of the page
-   - Some PDFs might be hidden below the fold
-   - Make sure all sections and attachments are loaded
-   - Wait 1 second after scrolling for content to render
+2. Find ALL PDF files on the page:
+   - Look in attachments table/section
+   - Look for download/view buttons
+   - COUNT the total number of PDFs and list their names
 
-3. COUNT how many PDF download buttons/links are on the page:
-   - CRITICAL: Look in MULTIPLE places for PDF files:
-     * Attachments section/table (often the main location)
-     * "Download" or "View" buttons next to each PDF filename
-     * Direct PDF links (ending in .pdf)
-     * "Event Package" or "Solicitation Package" sections
-     * Tabs or expandable sections that might hide PDFs
-   - COUNT EACH individual PDF file - if you see 4 rows in an attachments table, that's 4 PDFs
-   - VERIFY your count by listing each PDF filename you found
-   - Note the TOTAL COUNT - you must download this many PDFs
-   - Example: "Found 4 PDFs: file1.pdf, file2.pdf, file3.pdf, file4.pdf"
-   - DOUBLE-CHECK: Does the count match the number of download buttons you see?
+3. For EACH PDF file you found:
 
-4. For EACH PDF download button/link, click it and IMMEDIATELY check what happens:
+   a) Click the download/view button
 
-   SCENARIO A: MODAL POPUP APPEARS
-   - If a modal/dialog appears with a "Download Attachment" or similar button
-   - Click the download button inside the modal
-   - Wait 1 second for the download to start
-   - Close the modal if needed
-   - Continue to next PDF
+   b) Observe what happens:
 
-   SCENARIO B: NEW TAB OPENS WITH PDF VIEWER
-   - If a new tab opens showing the PDF in browser viewer
-   - Immediately call the download_pdf_from_viewer tool with the tab's URL
-   - Wait for the tool to confirm successful download
-   - Continue to next PDF
+      If MODAL appears → Click download button in modal → Close modal
 
-   SCENARIO C: DIRECT DOWNLOAD (NO MODAL, NO NEW TAB)
-   - If neither a modal nor a new tab appears
-   - The file is downloading directly
-   - Wait 1 second
-   - Continue to next PDF
+      If NEW TAB opens → STOP! You MUST do this:
+         1. Switch to the new tab with the PDF
+         2. Immediately call: download_pdf_from_viewer with the tab URL
+         3. Wait for "✓ SUCCESS: Downloaded 'filename'" response
+         4. Only then continue to next PDF
 
-5. Keep track of how many PDFs you've processed - it must match the total count from step 3
+      If NOTHING happens → File downloaded directly → Continue
 
-6. Repeat steps 4-5 for ALL PDF download buttons/links on the page
+4. After processing all PDFs, go through ALL open PDF tabs:
+   - For EACH tab showing a PDF viewer
+   - Call download_pdf_from_viewer with that tab's URL
+   - Wait for success confirmation
 
-═══════════════════════════════════════════════════════════════════════════════
-PHASE 2: CLEANUP
-═══════════════════════════════════════════════════════════════════════════════
+5. Count your successes:
+   - How many download_pdf_from_viewer calls returned "✓ SUCCESS"?
+   - How many modal downloads completed?
+   - Total must equal the PDF count from step 2!
 
-7. After all PDF downloads are initiated (including calling download_pdf_from_viewer for any PDF viewer tabs):
-   - Close any remaining open tabs
-   - Return to the main page
+6. Only mark task complete when:
+   - Every PDF viewer tab has been processed with download_pdf_from_viewer
+   - Every call showed "✓ SUCCESS: Downloaded 'filename' (size bytes)"
+   - Total successes = Total PDF count
 
-═══════════════════════════════════════════════════════════════════════════════
-PHASE 3: VALIDATION AND COMPLETION
-═══════════════════════════════════════════════════════════════════════════════
-
-8. VALIDATE that you downloaded ALL PDFs:
-   - Compare: How many PDFs did you count in step 3?
-   - Compare: How many PDFs did you successfully download?
-   - These numbers MUST MATCH
-   - If they don't match, scroll through the page again to find missing PDFs
-
-9. Once validation is complete, mark the task as done with a simple completion message
-
-DOWNLOAD DIRECTORY: {str(self.download_dir.absolute())}
-All PDFs must be saved to this exact location.
-
-IMPORTANT NOTES:
-- Different websites behave differently - be adaptive!
-- Always check what happens after clicking a download button
-- Handle modals by clicking the download button inside them
-- Handle PDF viewer tabs by calling download_pdf_from_viewer tool immediately
-- Handle direct downloads by just waiting a moment
-
-When you are completely finished, mark the task as done.
+⚠️ REMEMBER: Opening a PDF in browser IS NOT downloading! You MUST call download_pdf_from_viewer for each PDF that opens in a tab!
 """
 
             # Create a new agent with the specific task, browser instance, and custom tools
@@ -452,6 +424,11 @@ When you are completely finished, mark the task as done.
                 "Creating Browser Use agent with task and custom tools...")
             logger.info(
                 f"Download directory: {str(self.download_dir.absolute())}")
+            logger.info("=" * 60)
+            logger.info(
+                "CRITICAL: Agent has download_pdf_from_viewer tool available")
+            logger.info("Agent MUST use this tool for PDF tabs!")
+            logger.info("=" * 60)
 
             agent = Agent(
                 task=task,
