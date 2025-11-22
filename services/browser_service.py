@@ -301,6 +301,20 @@ class BrowserService:
         Raises:
             Exception: If navigation or download fails
         """
+
+        # SKIPPING AGENT JUST FOR TESTING, RETURNING DOWNLOADED FILES DIRECTLY
+        # Get list of downloaded files
+        # downloaded_files = self._get_downloaded_files()
+
+        # if not downloaded_files:
+        #     logger.warning("No PDF files were downloaded")
+        #     logger.warning(f"Agent result was: {result}")
+        #     return []
+
+        # return downloaded_files
+
+        # TEST END
+
         try:
             logger.info(f"Starting PDF extraction from: {url}")
 
@@ -328,15 +342,23 @@ PHASE 1: INITIATE ALL PDF DOWNLOADS
 
 1. Wait for the page to fully load (wait 3-5 seconds)
 
-2. Look for ALL PDF files and download buttons/links on the page:
-   - "Download" buttons or links
-   - Direct PDF links (ending in .pdf)
-   - "View Document" or "View Event Package" buttons
-   - Document tabs or sections with download options
-   - Attachment lists
-   - "Event Package" or "Solicitation Package" sections
+2. SCROLL THROUGH THE ENTIRE PAGE to ensure all content is visible:
+   - Scroll down to the bottom of the page
+   - Some PDFs might be hidden below the fold
+   - Make sure all sections and attachments are loaded
 
-3. For EACH PDF download button/link, click it and IMMEDIATELY check what happens:
+3. COUNT how many PDF download buttons/links are on the page:
+   - Look for ALL PDF files and download buttons/links:
+     * "Download" buttons or links
+     * Direct PDF links (ending in .pdf)
+     * "View Document" or "View Event Package" buttons
+     * Document tabs or sections with download options
+     * Attachment lists
+     * "Event Package" or "Solicitation Package" sections
+   - Note the TOTAL COUNT - you must download this many PDFs
+   - Example: "Found 8 PDF download buttons on this page"
+
+4. For EACH PDF download button/link, click it and IMMEDIATELY check what happens:
 
    SCENARIO A: MODAL POPUP APPEARS
    - If a modal/dialog appears with a "Download Attachment" or similar button
@@ -358,13 +380,15 @@ PHASE 1: INITIATE ALL PDF DOWNLOADS
    - Wait 2 seconds
    - Continue to next PDF
 
-4. Repeat step 3 for ALL PDF download buttons/links on the page
+5. Keep track of how many PDFs you've processed - it must match the total count from step 3
+
+6. Repeat steps 4-5 for ALL PDF download buttons/links on the page
 
 ═══════════════════════════════════════════════════════════════════════════════
 PHASE 2: DOWNLOAD PDFs FROM VIEWER TABS (IF ANY)
 ═══════════════════════════════════════════════════════════════════════════════
 
-5. If you have any tabs that opened with PDF viewers (Scenario B from Phase 1):
+7. If you have any tabs that opened with PDF viewers (Scenario B from Phase 1):
 
    For EACH PDF viewer tab:
    - Switch to that PDF tab
@@ -376,16 +400,22 @@ PHASE 2: DOWNLOAD PDFs FROM VIEWER TABS (IF ANY)
    CRITICAL: The 'download_pdf_from_viewer' tool is MANDATORY for PDF viewer tabs!
    If you skip calling this tool, the PDF will NOT be downloaded!
 
-6. If no PDF viewer tabs were opened in Phase 1, skip this phase
+8. If no PDF viewer tabs were opened in Phase 1, skip this phase
 
 ═══════════════════════════════════════════════════════════════════════════════
-PHASE 3: CLEANUP
+PHASE 3: VALIDATION AND CLEANUP
 ═══════════════════════════════════════════════════════════════════════════════
 
-7. After ALL PDFs have been downloaded:
-   - Close any PDF viewer tabs that are still open
-   - Return to the main page
-   - Confirm completion with the total number of PDFs downloaded
+9. VALIDATE that you downloaded ALL PDFs:
+   - Compare: How many PDFs did you count in step 3?
+   - Compare: How many PDFs did you successfully download?
+   - These numbers MUST MATCH
+   - If they don't match, scroll through the page again to find missing PDFs
+
+10. After ALL PDFs have been downloaded and validated:
+    - Close any PDF viewer tabs that are still open
+    - Return to the main page
+    - Confirm completion: "Successfully downloaded X out of X PDFs"
 
 DOWNLOAD DIRECTORY: {str(self.download_dir.absolute())}
 All PDFs must be saved to this exact location.

@@ -93,6 +93,7 @@ async def extract_pdfs(request: ExtractionRequest):
 
         # Step 2: Download PDFs from URL
         logger.info(f"\nStep 2: Downloading PDFs from {request.url}...")
+
         downloaded_files = await browser_service.find_and_download_pdfs(request.url)
 
         if not downloaded_files:
